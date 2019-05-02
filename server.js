@@ -74,32 +74,7 @@ app.get('/location', (request, response) => {
 
 app.get('/weather', (request, response) => {
   try {
-    let weaUrl = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${request.query.data.latitude},${request.query.data.longitude}`;
-    let sqlQueryCheck = `SELECT * FROM weather WHERE search_query = $1;`;
-    let values = [request.query.data.search_query];
-
-    client.query(sqlQueryCheck, values)
-      .then((data) => {
-        if(data.rowCount > 0){
-          response.send(data.rows);
-        } else {
-          superagent.get(weaUrl)
-            .then(result => {
-              let newWeatherArr = result.body.daily.data.map(element => {
-                return new Weather(element);
-              });
-              newWeatherArr.forEach((item)=> {
-                let insertStatement = `INSERT INTO weather (forecast, time, search_query) VALUES ($1, $2, $3);`;
-                let values = [item.forecast, item.time, request.query.data.search_query];
-                client.query(insertStatement, values);
-              });
-              response.send(newWeatherArr);
-            });
-        }
-      })
-      .catch((error) => {
-        console.log('TROUBLE CHECK FOR WEATHER IN DB', error);
-      });
+    checkDB(request, response, 'weather');
   } catch(e) {
     response.status(500).send('Sorry something went wrong!');
   }
@@ -107,36 +82,7 @@ app.get('/weather', (request, response) => {
 
 app.get('/events', (request, response) => {
   try {
-    let sqlQueryCheck = `SELECT * FROM events WHERE search_query = $1;`;
-    let values = [request.query.data.search_query];
-
-    client.query(sqlQueryCheck, values)
-      .then((data) =>{
-        if(data.rowCount > 0){
-          response.send(data.rows[0]);
-        }
-        else {
-          let eventURL = `https://www.eventbriteapi.com/v3/events/search?location.longitude=${request.query.data.longitude}&location.latitude=${request.query.data.latitude}&token=${process.env.EVENTBRITE_API_KEY}`;
-          superagent.get(eventURL)
-            .then(result => {
-              let eventsArray = result.body.events.map((element) => {
-                return new Events(element.url, element.name.text, element.start.local, element.description.text);
-              });
-              eventsArray.forEach((item) => {
-                let insertStatement = `INSERT INTO events (link, name, event_date, summary, search_query) VALUES ($1, $2, $3, $4, $5);`;
-                let values = [item.link, item.name, item.event_date, item.summary, request.query.data.search_query];
-                client.query(insertStatement, values);
-              });
-              response.send(eventsArray);
-            });
-        }
-      })
-      .catch((error) => {
-        console.log('YOU FUCKED SHIT UP!!!', error);
-      });
-
-
-    
+    checkDB(request, response, 'events');
   } catch(e) {
     response.status(500).send('Sorry something went wrong with events!',e);
   }
@@ -147,25 +93,55 @@ app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 
 // helper function
-// const checkDB = (request, response, tableName) => {
-//   let sqlQueryCheck = `SELECT * FROM ${tableName} WHERE search_query = $1;`;
-//   let values = [request.query.data.search_query];
-
-//   client.query(sqlQueryCheck, values)
-//     .then((data) => {
-//       if(data.rowCount > 0){
-//         console.log(`THIS IS THE DATA ROWS FOR ${tableName}!!!!!!!! ${data.rows[0]}`);
-//         return data.rows[0];
-//       }
-//     })
-//     .catch((error)=> {
-//       console.log(error);
-//     });
-// };
+const checkDB = (request, response, tableName) => {
+  let sqlQueryCheck = `SELECT * FROM ${tableName} WHERE search_query = $1;`;
+  let values = [request.query.data.search_query];
 
 
-// const writeToDB = (request, response, tableName, tableColumnNames, values, valueData) => {
-//   let insertStatement = `INSERT INTO ${tableName} (${tableColumnNames}) VALUES (${values});`;
-//   let valuesToWrite = valueData;
-//   client.query(insertStatement, valuesToWrite);
-// };
+  client.query(sqlQueryCheck, values)
+    .then((data) => {
+      if(data.rowCount > 0){
+        return response.send(data.rows);
+      } else if(tableName === 'weather'){
+        return weatherAPICall(request);
+      } else if(tableName === 'events'){
+        return eventsAPICall(request);
+      }
+    })
+    .catch((error)=> {
+      console.log(error);
+    });
+};
+
+
+const weatherAPICall = (request, response) => {
+  let weaUrl = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${request.query.data.latitude},${request.query.data.longitude}`;
+  superagent.get(weaUrl)
+    .then(result => {
+      let newWeatherArr = result.body.daily.data.map(element => {
+        return new Weather(element);
+      });
+      newWeatherArr.forEach((item)=> {
+        let insertStatement = `INSERT INTO weather (forecast, time, search_query) VALUES ($1, $2, $3);`;
+        let values = [item.forecast, item.time, request.query.data.search_query];
+        client.query(insertStatement, values);
+      });
+      return newWeatherArr;
+    });
+};
+
+const eventsAPICall = (request, response) => {
+  let eventURL = `https://www.eventbriteapi.com/v3/events/search?location.longitude=${request.query.data.longitude}&location.latitude=${request.query.data.latitude}&token=${process.env.EVENTBRITE_API_KEY}`;
+  superagent.get(eventURL)
+    .then(result => {
+      let eventsArray = result.body.events.map((element) => {
+        return new Events(element.url, element.name.text, element.start.local, element.description.text);
+      });
+      eventsArray.forEach((item) => {
+        let insertStatement = `INSERT INTO events (link, name, event_date, summary, search_query) VALUES ($1, $2, $3, $4, $5);`;
+        let values = [item.link, item.name, item.event_date, item.summary, request.query.data.search_query];
+        client.query(insertStatement, values);
+      });
+      return eventsArray;
+    });
+};
