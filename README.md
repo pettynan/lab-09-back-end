@@ -95,3 +95,40 @@ Start time: 1200
 Finish time: 1330
 
 Actual time needed to complete: 90 Min
+
+# Features Day 3
+Number and name of feature: Set up Database
+
+Estimate of time needed to complete: 90 Min
+
+Start time: 9:00
+
+Finish time: 9:15
+
+Actual time needed to complete: 15 Min
+
+
+
+Number and name of feature #2: Database Functions
+
+Estimate of time needed to complete: 120 Min
+
+Start time: 9:15
+
+Finish time: 12:00
+
+Actual time needed to complete: 2.75 Hours
+
+
+
+Number and name of feature #3: Deploy
+
+Estimate of time needed to complete: 15 Min
+
+Start time: 1200
+
+Finish time: 1210
+
+Actual time needed to complete: 10 Min
+
+
