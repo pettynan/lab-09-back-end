@@ -3,14 +3,19 @@
 require('dotenv').config();
 
 const superagent = require('superagent');
+const pg = require('pg');
 
 const cors = require('cors');
 const express = require('express');
 const app = express();
 app.use(cors());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 const weatherArr = [];
+
+
+const client = new pg.Client(process.env.DATABASE_URL);
+client.connect();
 
 const Location = function(obj){
   this.search_query = obj.results[0].address_components[0].long_name;
@@ -34,12 +39,32 @@ const Events = function(link, name, eventDate, summary){
 
 app.get('/location', (request, response) => {
   try {
-    let queryData = request.query.data;
-    let locUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${queryData}&key=${process.env.GEOCODEAPI}`;
-    superagent.get(locUrl)
-      .then(result=> {
-        let loc = new Location(result.body);
-        response.send(loc);
+    let queryData = request.query.data.toLowerCase();
+    let sqlQueryDataCheck = `SELECT * FROM location WHERE search_query = $1;`;
+    let values = [queryData];
+
+    client.query(sqlQueryDataCheck, values)
+      .then((data) => {
+        if(data.rowCount > 0){
+          response.send(data.rows[0]);
+        } else {
+          let locUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${queryData}&key=${process.env.GEOCODE_API_KEY}`;
+          superagent.get(locUrl)
+            .then(result=> {
+              let loc = new Location(result.body);
+              let insertStatement = `INSERT INTO location (latitude, longitude, formatted_query, search_query) VALUES ($1, $2, $3, $4);`;
+              let values = [loc.latitude, loc.longitude, loc.formatted_query, loc.search_query.toLowerCase()];
+              client.query(insertStatement, values);
+              console.log('DATA WAS ADDED TO THE DB', data.rows);
+              response.send(loc);
+            })
+            .catch((error)=> {
+              console.log('THERE\'S BEEN AN ERROR WITH SUPERAGENT', error);
+            });
+        }
+      })
+      .catch((error)=> {
+        console.log('OH NO THERE\'S BEEN AN ERRORRRRRRRRR Querying data from the database.', error);
       });
   } catch(e) {
     response.status(500).send('Sorry something went wrong!');
@@ -49,37 +74,74 @@ app.get('/location', (request, response) => {
 
 app.get('/weather', (request, response) => {
   try {
-    let weaUrl = `https://api.darksky.net/forecast/${process.env.DARKSKYAPI}/${request.query.data.latitude},${request.query.data.longitude}`;
-    superagent.get(weaUrl)
-      .then(result => {
-        let newWeatherArr = result.body.daily.data.map(element => {
-          return new Weather(element);
-        });
-        response.send(newWeatherArr);
-      });
+    checkDB(request, response, 'weather');
   } catch(e) {
     response.status(500).send('Sorry something went wrong!');
   }
 });
 
 app.get('/events', (request, response) => {
-  console.log('The event route start');
   try {
-    let eventURL = `https://www.eventbriteapi.com/v3/events/search?location.longitude=${request.query.data.longitude}&location.latitude=${request.query.data.latitude}&token=${process.env.EVENBRIGHTOATH}`;
-    console.log(eventURL);
-    superagent.get(eventURL)
-      .then(result => {
-        console.log(result.body.events);
-        let eventsArray = result.body.events.map((element) => {
-
-          return new Events(element.url, element.name.text, element.start.local, element.description.text);
-        });
-        response.send(eventsArray);
-        console.log('The EVENBRIGHT Results', eventsArray);
-      })
+    checkDB(request, response, 'events');
   } catch(e) {
     response.status(500).send('Sorry something went wrong with events!',e);
   }
-  });
+});
 
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+
+
+
+// helper function
+const checkDB = (request, response, tableName) => {
+  let sqlQueryCheck = `SELECT * FROM ${tableName} WHERE search_query = $1;`;
+  let values = [request.query.data.search_query];
+
+
+  client.query(sqlQueryCheck, values)
+    .then((data) => {
+      if(data.rowCount > 0){
+        return response.send(data.rows);
+      } else if(tableName === 'weather'){
+        return weatherAPICall(request);
+      } else if(tableName === 'events'){
+        return eventsAPICall(request);
+      }
+    })
+    .catch((error)=> {
+      console.log(error);
+    });
+};
+
+
+const weatherAPICall = (request, response) => {
+  let weaUrl = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${request.query.data.latitude},${request.query.data.longitude}`;
+  superagent.get(weaUrl)
+    .then(result => {
+      let newWeatherArr = result.body.daily.data.map(element => {
+        return new Weather(element);
+      });
+      newWeatherArr.forEach((item)=> {
+        let insertStatement = `INSERT INTO weather (forecast, time, search_query) VALUES ($1, $2, $3);`;
+        let values = [item.forecast, item.time, request.query.data.search_query];
+        client.query(insertStatement, values);
+      });
+      return newWeatherArr;
+    });
+};
+
+const eventsAPICall = (request, response) => {
+  let eventURL = `https://www.eventbriteapi.com/v3/events/search?location.longitude=${request.query.data.longitude}&location.latitude=${request.query.data.latitude}&token=${process.env.EVENTBRITE_API_KEY}`;
+  superagent.get(eventURL)
+    .then(result => {
+      let eventsArray = result.body.events.map((element) => {
+        return new Events(element.url, element.name.text, element.start.local, element.description.text);
+      });
+      eventsArray.forEach((item) => {
+        let insertStatement = `INSERT INTO events (link, name, event_date, summary, search_query) VALUES ($1, $2, $3, $4, $5);`;
+        let values = [item.link, item.name, item.event_date, item.summary, request.query.data.search_query];
+        client.query(insertStatement, values);
+      });
+      return eventsArray;
+    });
+};
