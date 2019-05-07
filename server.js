@@ -128,6 +128,7 @@ app.get('/yelp', (request, response) => {
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 
+
 // Helper function to check whether or not search query is already cached.
 const checkDB = (request, response, tableName) => {
   let sqlQueryCheck = `SELECT * FROM ${tableName} WHERE search_query = $1;`;
