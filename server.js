@@ -31,8 +31,18 @@ const Weather = function(obj) {
 const Events = function(link, name, eventDate, summary){
   this.link = link;
   this.name = name;
-  this.event_date = eventDate;
-  this.summary = summary;
+  this.event_date = eventDate.slice(0, 10);
+  this.summary = `${summary.slice(0, 512)}...`;
+};
+
+const Movies = function(obj) {
+  this.title = obj.title;
+  this.overview = obj.overview;
+  this.average_votes = obj.vote_average;
+  this.total_votes = obj.vote_count;
+  this.image_url = `https://image.tmdb.org/t/p/w370_and_h556_bestv2${obj.poster_path}`;
+  this.popularity = obj.popularity;
+  this.released_on = obj.release_date;
 };
 
 // Location Endpoint
@@ -53,7 +63,8 @@ app.get('/location', (request, response) => {
               let loc = new Location(result.body);
               let insertStatement = `INSERT INTO location (latitude, longitude, formatted_query, search_query) VALUES ($1, $2, $3, $4);`;
               let values = [loc.latitude, loc.longitude, loc.formatted_query, loc.search_query.toLowerCase()];
-              client.query(insertStatement, values);g
+              console.log(insertStatement, values);
+              client.query(insertStatement, values);
               response.send(loc);
             })
             .catch((error)=> {
@@ -88,6 +99,15 @@ app.get('/events', (request, response) => {
   }
 });
 
+// Movies Endpoint
+app.get('/movies', (request, response) => {
+  try {
+    checkDB(request, response, 'movies');
+  } catch(e) {
+    response.status(500).send('Sorry something went wrong with movies!',e);
+  }
+});
+
 // Console logs PORT when server is listening
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
@@ -100,12 +120,14 @@ const checkDB = (request, response, tableName) => {
 
   client.query(sqlQueryCheck, values)
     .then((data) => {
-      if(data.rowCount > 0){
+      if(data.rowCount > 0) {
         return response.send(data.rows);
-      } else if(tableName === 'weather'){
+      } else if(tableName === 'weather') {
         return weatherAPICall(request);
-      } else if(tableName === 'events'){
+      } else if(tableName === 'events') {
         return eventsAPICall(request);
+      } else if(tableName === 'movies') {
+        return moviesAPICall(request);
       }
     })
     .catch((error)=> {
@@ -144,5 +166,24 @@ const eventsAPICall = (request) => {
         client.query(insertStatement, values);
       });
       return eventsArray;
+    });
+};
+
+// Helper function to makeAPI call and cache Movie Data of unkown search queries.
+const moviesAPICall = (request) => {
+  console.log('MOVIESAPICALL WAS CALLED');
+  let movieURL = `https://api.themoviedb.org/3/discover/movie?api_key=${process.env.MOVIE_API_KEY}&sort_by=popularity.desc&include_adult=false&include_video=false&page=1`;
+  superagent.get(movieURL)
+    .then(result => {
+      let moviesArray = result.body.results.map((element) => {
+        return new Movies(element);
+      });
+      moviesArray.forEach((item) => {
+        let insertStatement = `INSERT INTO movies (title, overview, average_votes, total_votes, image_url, popularity, released_on, search_query) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`;
+        let values = [item.title, item.overview, item.average_votes, item.total_votes, item.image_url, item.popularity, item.released_on, request.query.data.search_query];
+        client.query(insertStatement, values);
+      });
+
+      return moviesArray;
     });
 };
