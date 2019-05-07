@@ -45,6 +45,14 @@ const Movies = function(obj) {
   this.released_on = obj.release_date;
 };
 
+const Yelp = function(obj) {
+  this.name = obj.name;
+  this.image_url = obj.image_url;
+  this.price = obj.price;
+  this.rating = obj.rating;
+  this.url = obj.url;
+};
+
 // Location Endpoint
 app.get('/location', (request, response) => {
   try {
@@ -63,7 +71,6 @@ app.get('/location', (request, response) => {
               let loc = new Location(result.body);
               let insertStatement = `INSERT INTO location (latitude, longitude, formatted_query, search_query) VALUES ($1, $2, $3, $4);`;
               let values = [loc.latitude, loc.longitude, loc.formatted_query, loc.search_query.toLowerCase()];
-              console.log(insertStatement, values);
               client.query(insertStatement, values);
               response.send(loc);
             })
@@ -108,6 +115,15 @@ app.get('/movies', (request, response) => {
   }
 });
 
+// Yelp Endpoint
+app.get('/yelp', (request, response) => {
+  try {
+    checkDB(request, response, 'yelp');
+  } catch(e) {
+    response.status(500).send('Sorry something went wrong with yelp!', e);
+  }
+});
+
 // Console logs PORT when server is listening
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
@@ -120,14 +136,16 @@ const checkDB = (request, response, tableName) => {
 
   client.query(sqlQueryCheck, values)
     .then((data) => {
-      if(data.rowCount > 0) {
+      if (data.rowCount > 0) {
         return response.send(data.rows);
-      } else if(tableName === 'weather') {
+      } else if (tableName === 'weather') {
         return weatherAPICall(request);
-      } else if(tableName === 'events') {
+      } else if (tableName === 'events') {
         return eventsAPICall(request);
-      } else if(tableName === 'movies') {
+      } else if (tableName === 'movies') {
         return moviesAPICall(request);
+      } else if (tableName === 'yelp') {
+        return yelpAPICall(request);
       }
     })
     .catch((error)=> {
@@ -169,9 +187,8 @@ const eventsAPICall = (request) => {
     });
 };
 
-// Helper function to makeAPI call and cache Movie Data of unkown search queries.
+// Helper function to make API call and cache Movie Data of unknown search queries.
 const moviesAPICall = (request) => {
-  console.log('MOVIESAPICALL WAS CALLED');
   let movieURL = `https://api.themoviedb.org/3/discover/movie?api_key=${process.env.MOVIE_API_KEY}&sort_by=popularity.desc&include_adult=false&include_video=false&page=1`;
   superagent.get(movieURL)
     .then(result => {
@@ -185,5 +202,26 @@ const moviesAPICall = (request) => {
       });
 
       return moviesArray;
+    });
+};
+
+// Helper function to make API call and cache Yelp Data of unknown search queries.
+const yelpAPICall = (request) => {
+  console.log('inside yelpApiCall');
+  let yelpURL = `https://api.yelp.com/v3/businesses/search?latitude=${request.query.data.latitude}&longitude=${request.query.data.longitude}`;
+  superagent.get(yelpURL)
+    .set({Authorization: `Bearer ${process.env.YELP_API_KEY}`})
+    .then(result => {
+      console.log('superagent worked');
+      let yelpsArray = result.body.businesses.map((element) => {
+        return new Yelp(element);
+      });
+      yelpsArray.forEach((item) => {
+        let insertStatement = `INSERT INTO yelp (name, image_url, price, rating, url, search_query) VALUES ($1, $2, $3, $4, $5, $6);`;
+        let values = [item.name, item.image_url, item.price, item.rating, item.url, request.query.data.search_query];
+        client.query(insertStatement, values);
+      });
+
+      return yelpsArray;
     });
 };

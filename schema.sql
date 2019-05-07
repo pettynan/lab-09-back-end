@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS weather, events, movies, location;
+DROP TABLE IF EXISTS weather, events, movies, yelp, location;
 
 CREATE TABLE location (
   id SERIAL,
@@ -35,3 +35,13 @@ CREATE TABLE movies (
   released_on TEXT,
   search_query TEXT
 );
+
+CREATE TABLE yelp (
+  id SERIAL,
+  name TEXT,
+  image_url TEXT,
+  price TEXT,
+  rating DECIMAL,
+  url TEXT,
+  search_query TEXT
+)
