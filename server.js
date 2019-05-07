@@ -207,12 +207,10 @@ const moviesAPICall = (request) => {
 
 // Helper function to make API call and cache Yelp Data of unknown search queries.
 const yelpAPICall = (request) => {
-  console.log('inside yelpApiCall');
   let yelpURL = `https://api.yelp.com/v3/businesses/search?latitude=${request.query.data.latitude}&longitude=${request.query.data.longitude}`;
   superagent.get(yelpURL)
     .set({Authorization: `Bearer ${process.env.YELP_API_KEY}`})
     .then(result => {
-      console.log('superagent worked');
       let yelpsArray = result.body.businesses.map((element) => {
         return new Yelp(element);
       });
