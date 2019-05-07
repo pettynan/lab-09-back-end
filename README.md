@@ -131,4 +131,14 @@ Finish time: 1210
 
 Actual time needed to complete: 10 Min
 
+# Features Day 4
 
+Number and name of feature: Set Up Movies API
+
+Estimate of time needed to complete: 60 minutes
+
+Start time: 1130
+
+Finish time: 1330
+
+Actual time needed to complete: 120 minutes
